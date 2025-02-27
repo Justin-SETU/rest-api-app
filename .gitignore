@@ -8,3 +8,6 @@ cdk.out
 
 # Misc
 .DS_Store
+
+# Ignore generated schema files
+*.schema.json
