@@ -3,7 +3,7 @@ import * as lambdanode from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as custom from "aws-cdk-lib/custom-resources";
-import * as apig from "aws-cdk-lib/aws-apigateway"; // ✅ ADDED
+import * as apig from "aws-cdk-lib/aws-apigateway"; 
 import { Construct } from "constructs";
 import { generateBatch } from "../shared/util";
 import { movies } from "../seed/movies";
@@ -12,7 +12,7 @@ export class RestAPIStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // ✅ Tables 
+    // Tables
     const moviesTable = new dynamodb.Table(this, "MoviesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "id", type: dynamodb.AttributeType.NUMBER },
@@ -20,7 +20,7 @@ export class RestAPIStack extends cdk.Stack {
       tableName: "Movies",
     });
 
-    // ✅ Functions 
+    // Functions
     const getMovieByIdFn = new lambdanode.NodejsFunction(
       this,
       "GetMovieByIdFn",
@@ -53,11 +53,23 @@ export class RestAPIStack extends cdk.Stack {
       }
     );
 
-    // ✅ New Lambda function: AddMovieFn
     const newMovieFn = new lambdanode.NodejsFunction(this, "AddMovieFn", {
       architecture: lambda.Architecture.ARM_64,
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: `${__dirname}/../lambdas/addMovie.ts`,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 128,
+      environment: {
+        TABLE_NAME: moviesTable.tableName,
+        REGION: "eu-west-1",
+      },
+    });
+
+    // New Lambda function: DeleteMovieFn
+    const deleteMovieFn = new lambdanode.NodejsFunction(this, "DeleteMovieFn", {
+      architecture: lambda.Architecture.ARM_64,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      entry: `${__dirname}/../lambdas/deleteMovie.ts`,
       timeout: cdk.Duration.seconds(10),
       memorySize: 128,
       environment: {
@@ -82,12 +94,13 @@ export class RestAPIStack extends cdk.Stack {
       }),
     });
 
-    // ✅ Permissions 
+    // Permissions
     moviesTable.grantReadData(getMovieByIdFn);
     moviesTable.grantReadData(getAllMoviesFn);
-    moviesTable.grantReadWriteData(newMovieFn); // ✅ Grant write access
+    moviesTable.grantReadWriteData(newMovieFn); // Grant write access
+    moviesTable.grantReadWriteData(deleteMovieFn); // Grant write access for deletion
 
-    // ✅ REST API
+    // REST API
     const api = new apig.RestApi(this, "RestAPI", {
       description: "demo api",
       deployOptions: {
@@ -101,24 +114,30 @@ export class RestAPIStack extends cdk.Stack {
       },
     });
 
-    // ✅ Movies endpoint
+    // Movies endpoint
     const moviesEndpoint = api.root.addResource("movies");
     moviesEndpoint.addMethod(
       "GET",
       new apig.LambdaIntegration(getAllMoviesFn, { proxy: true })
     );
 
-    // ✅ AddMovie API endpoint (POST)
+    // AddMovie API endpoint (POST)
     moviesEndpoint.addMethod(
       "POST",
       new apig.LambdaIntegration(newMovieFn, { proxy: true })
     );
 
-    // ✅ Detail movie endpoint
+    // Detail movie endpoint
     const specificMovieEndpoint = moviesEndpoint.addResource("{movieId}");
     specificMovieEndpoint.addMethod(
       "GET",
       new apig.LambdaIntegration(getMovieByIdFn, { proxy: true })
+    );
+
+    // Delete movie endpoint (DELETE)
+    specificMovieEndpoint.addMethod(
+      "DELETE",
+      new apig.LambdaIntegration(deleteMovieFn, { proxy: true })
     );
   }
 }
