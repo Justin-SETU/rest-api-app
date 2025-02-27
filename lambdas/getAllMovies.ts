@@ -1,13 +1,12 @@
-import { Handler } from "aws-lambda";
-
+import { APIGatewayProxyHandlerV2 } from "aws-lambda";  // CHANGED
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
-const ddbDocClient = createDDbDocClient();
+const ddbClient = new DynamoDBClient({ region: process.env.REGION });
+const ddbDocClient = DynamoDBDocumentClient.from(ddbClient);
 
-export const handler: Handler = async (event, context) => {
+export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // CHANGED
   try {
-    // Print Event
     console.log("Event: ", event);
 
     const commandOutput = await ddbDocClient.send(
@@ -15,20 +14,21 @@ export const handler: Handler = async (event, context) => {
         TableName: process.env.TABLE_NAME,
       })
     );
+
     if (!commandOutput.Items) {
       return {
         statusCode: 404,
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ Message: "Invalid movie Id" }),
+        body: JSON.stringify({ Message: "No movies found" }),  // Updated message for better clarity
       };
     }
+
     const body = {
       data: commandOutput.Items,
     };
 
-    // Return Response
     return {
       statusCode: 200,
       headers: {
@@ -37,27 +37,13 @@ export const handler: Handler = async (event, context) => {
       body: JSON.stringify(body),
     };
   } catch (error: any) {
-    console.log(JSON.stringify(error));
+    console.error("Error: ", JSON.stringify(error));
     return {
       statusCode: 500,
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({ error }),
+      body: JSON.stringify({ error: "Internal Server Error" }),  // More user-friendly error message
     };
   }
 };
-
-function createDDbDocClient() {
-  const ddbClient = new DynamoDBClient({ region: process.env.REGION });
-  const marshallOptions = {
-    convertEmptyValues: true,
-    removeUndefinedValues: true,
-    convertClassInstanceToMap: true,
-  };
-  const unmarshallOptions = {
-    wrapNumbers: false,
-  };
-  const translateConfig = { marshallOptions, unmarshallOptions };
-  return DynamoDBDocumentClient.from(ddbClient, translateConfig);
-}

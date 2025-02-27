@@ -1,16 +1,17 @@
-import { Handler } from "aws-lambda";
+import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 
 const ddbDocClient = createDDbDocClient();
 
-export const handler: Handler = async (event, context) => {
+export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
   try {
-    // Print Event
-    console.log("Event: ", JSON.stringify(event?.queryStringParameters));
-    const parameters = event?.queryStringParameters;
-    const movieId = parameters ? parseInt(parameters.movieId) : undefined;
+    console.log("[EVENT]", JSON.stringify(event));
+
+    // Extract movieId from pathParameters
+    const pathParameters = event?.pathParameters;
+    const movieId = pathParameters?.movieId ? parseInt(pathParameters.movieId) : undefined;
 
     if (!movieId) {
       return {
@@ -28,7 +29,9 @@ export const handler: Handler = async (event, context) => {
         Key: { id: movieId },
       })
     );
+
     console.log("GetCommand response: ", commandOutput);
+
     if (!commandOutput.Item) {
       return {
         statusCode: 404,
@@ -38,11 +41,11 @@ export const handler: Handler = async (event, context) => {
         body: JSON.stringify({ Message: "Invalid movie Id" }),
       };
     }
+
     const body = {
       data: commandOutput.Item,
     };
 
-    // Return Response
     return {
       statusCode: 200,
       headers: {
